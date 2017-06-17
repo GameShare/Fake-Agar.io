@@ -1,77 +1,81 @@
+var io = require("socket.io-client");
+var hash = require('crypto');
 // Create the applirection
 const app = new PIXI.Application({
     width: 800,
     height: 600
 });
 
+var userID = sha1(Date().toString());
+var ballList = {};
+
+// init
+var socket = io.connect("http://127.0.0.1/");
 app.renderer.backgroundColor = 0xffffff;
 // Add the view to the DOM
 document.body.appendChild(app.view);
 
-var rect = new PIXI.Graphics();
-rect.interactive = true;
-rect.hitArea = new PIXI.Circle(0, 0, 50);
-rect.beginFill(0x000000, 1);
-rect.drawCircle(0, 0, 50);
-rect.endFill();
-rect.x = 400;
-rect.y = 300;
 
-// ex, add display objects
-app.stage.addChild(rect);
-
-
-function gameLoop() {
-    //Loop this function at 60 frames per second
-    requestAnimationFrame(gameLoop);
-    //Update the current game state:
-    state();
-}
-
-function play() {
-    rect.x += rect.vx;
-    rect.y += rect.vy;
-    resist = 0.1;
-    if (getDis(rect.vx, rect.vy) >= 0.1) {
-        rect.vx -= resist * rect.vx / Math.sqrt(getDis(rect.vx, rect.vy));
-        rect.vy -= resist * rect.vy / Math.sqrt(getDis(rect.vx, rect.vy));
+function createBall(x, y, isSelf) {
+    var rect = new PIXI.Graphics();
+    rect.interactive = true;
+    rect.hitArea = new PIXI.Circle(0, 0, 50);
+    if (isSelf) {
+        rect.beginFill(0xff0000, 1);
     } else {
-        rect.vx = 0;
-        rect.vy = 0;
+        rect.beginFill(0x000000, 1);
     }
+    rect.drawCircle(0, 0, 50);
+    rect.endFill();
+    rect.x = x;
+    rect.y = y;
+    rect.vx = 0;
+    rect.vy = 0;
+    // ex, add display objects
+    app.stage.addChild(rect);
+    return rect;
 }
 
 function setup() {
-    rect.vx = 0;
-    rect.vy = 0;
-    window.addEventListener("click", function(event) {
-        speed = 5;
-        if (rect.x > event.x) {
-            rect.vx = -speed * Math.abs(rect.x - event.x) / Math.sqrt(getDis(rect.x - event.x, rect.y - event.y));
-        } else {
-            rect.vx = speed * Math.abs(rect.x - event.x) / Math.sqrt(getDis(rect.x - event.x, rect.y - event.y));
-        }
-        if (rect.y > event.y) {
-            rect.vy = -speed * Math.abs(rect.y - event.y) / Math.sqrt(getDis(rect.x - event.x, rect.y - event.y));
-        } else {
-            rect.vy = speed * Math.abs(rect.y - event.y) / Math.sqrt(getDis(rect.x - event.x, rect.y - event.y));
-        }
+    ballList[userID] = createBall(300, 400, true);
+    socket.emit("newBall", {
+        userID: userID,
+        x: ballList[userID].x,
+        y: ballList[userID].y,
+        vx: 0,
+        vy: 0
     });
 
-
-    //Set the game state
-    state = play;
-    //Start the game loop
-    gameLoop();
+    window.addEventListener("click", function(event) {
+        socket.emit("click", {
+            userID: userID,
+            x: event.x,
+            y: event.y
+        });
+    });
 }
 
-function getDis(x, y) {
-    return Math.abs(x) * Math.abs(x) + Math.abs(y) * Math.abs(y)
-}
+socket.on("otherBall", function(ball) {
+    ballList[ball.userID] = createBall(ball.x, ball.y);
+});
+
+socket.on("update", function(event) {
+    var ball = ballList[event.userID];
+    if (ball) {
+        ball.x = event.x;
+        ball.y = event.y;
+    }
+})
 
 $(function() {
     setup();
 });
+
+function sha1(content) {
+    var sha1 = hash.createHash('sha1');
+    sha1.update(content);
+    return sha1.digest('hex');
+}
 
 /////////////////////////////////////////////////////////////////
 // function setupKeyboard(){
